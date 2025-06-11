@@ -1,6 +1,0 @@
-_type: "prompt"
-template: |
-    - A grader is a scorer who rates the relevance of retrieved documents to user questions. 
-    - Documents are scored as relevant if they contain keywords or semantic meanings that are relevant to the user question. 
-    - The goal is to weed out bad searches. 
-    Assigns a binary score of 'Y' or 'N' to indicate whether the article addresses the question.

@@ -1,9 +1,7 @@
 # 노드 관련 함수 정의
 from langchain_core.documents import Document
 from langchain_core.messages import AIMessage
-from schemas.state_schema import AgentState
 from schemas.fastapi_schema import HumanInfo
-from tools.search import tavily_search
 from chains.rag_chain import (
     generate_chain,
     rewrite_query_chain,
@@ -16,122 +14,70 @@ from utils.reranker import rerank_search
 from vectorstore.pdf import PDFRetrievalChain
 from pathlib import Path
 
+from schemas.state_schema import ManagingState
+
 import os
 import logging
 import re
 
 logger = logging.getLogger(__name__)
 
-def web_search(state: AgentState):
-    '''웹 검색을 반환하는 노드'''
-    logger.info('======== [NODE] WEB_SEARCH ========')
-    web_search_results = tavily_search(max_results=state['human_info']['retrieve_search_cnt']).invoke(state['question'])
-
-    document_list = [
-        Document(
-            page_content=result["content"],
-            metadata={
-                "source": result["url"]
-            }
-        )
-        for result in web_search_results
-    ]
-    return {"documents": document_list}
-
-
-def generate(state: AgentState):
-    '''답변을 생성하는 노드'''
-    logger.info('======== [NODE] GENERATE ========')
-    logger.info(state)
-    question = state['question']
-    documents = state.get('documents', '')
-
-    generation = generate_chain().invoke({"question": question, "context": documents})
-
-    # deepseek 전처리
-    generation = re.sub(r"<think>.*?</think>", "", generation, flags=re.DOTALL).strip()
-
-    logger.info(f'======== [NODE] GENERATION :: {generation} ========')
+def initialize_query(state: ManagingState):
+    '''입력받은 질문을 기존 이력 여부에 따라 변형하는 노드'''
+    logger.info('======== [NODE] INITIALIZE_QUERY ========')
     
-    return {
-        "generate_message": generation,
-        "messages": AIMessage(content=generation),
-        "documents": documents if documents != '' else ''
-    }
+    return ''
 
-
-def transform_query(state: AgentState):
-    '''Question을 다시 작성하는 노드'''
-    logger.info('======== [NODE] TRANSFORM QUERY ========')
-    question = state['question']
-
-    improv_question = rewrite_query_chain().invoke({"question": question})
-
-    logger.info(f'======== [NODE] IMPROVED QUERY :: {improv_question}========')
-
-    return {"question": improv_question}
-
-
-def retrieve(state: AgentState):
-    '''Retrieve한 Document를 반환하는 노드'''
+def retrieve(state: ManagingState):
+    '''질문을 기반으로 Retriever 검색을 수행하는 노드'''
     logger.info('======== [NODE] RETRIEVE ========')
-    question = state['question']
-    pdf_path = os.path.join(Path(__file__).parent.parent, "data", "pdf", "지방자치단체 산안법 적용 (산재예방정책과-3018 (2018.07.06. 시행).pdf")
-
-    # (예외처리) AIMessage 객체면, 그 안의 필드로 들어가 있을 것이므로, content를 참조하게끔 한다.
-    if isinstance(question, AIMessage):
-        question = question.content
-
-    logger.info(f'======== [NODE][RETRIEVE] Question: {question} ========')
-
-    # PDFRetrieval 사용 시 해제 (지금은 쓰지 않음)
-    # pdf_retriever = PDFRetrievalChain(search_num=5, source_uris=[pdf_path]).create_chain()
-    # documents = pdf_retriever.invoke(question)
-
-    keyword_json = keyword_search(question, search_num=3)
-    semantic_json = semantic_search(question, search_num=3)
-
-    hybrid_search_len = len(keyword_json) + len(semantic_json)
     
-    if hybrid_search_len == 0:
-        return {"documents": []}
-    else:
-        logger.info(f'======== [API] SEARCH NUM :: {hybrid_search_len} ========')
+    return ''
 
-        results = rerank_search(question, keyword_json, semantic_json, search_num=3)
+def grade_documents(state: ManagingState):
+    '''검색된 문서의 관련성을 평가하는 노드'''
+    logger.info('======== [NODE] GRADE_DOCUMENTS ========')
+    
+    return ''
 
-        document_list = [
-            Document(
-                page_content=result["content"],
-                metadata={
-                    "file_name": result["file_name"],
-                    "page_numbers": result["page_numbers"]
-                }
-            )
-            for result in results
-        ]
+def rewrite_query(state: ManagingState):
+    '''질문을 의미 기반으로 재작성하는 노드'''
+    logger.info('======== [NODE] REWRITE_QUERY ========')
+    
+    return ''
 
-        logger.info(f'====== [DOCUMENTS]{document_list} ========')
+def generate(state: ManagingState):
+    '''컨텍스트를 기반으로 답변을 생성하는 노드'''
+    logger.info('======== [NODE] GENERATE ========')
+    
+    return ''
 
-        return {"documents": document_list}
+def first_judgement(state: ManagingState):
+    '''생성된 답변을 판단하는 첫번째 노드'''
+    logger.info('======== [NODE] FIRST_JUDGEMENT ========')
+    
+    return ''
 
+def second_judgement(state: ManagingState):
+    '''생성된 답변을 판단하는 두번째 노드'''
+    logger.info('======== [NODE] SECOND_JUDGEMENT ========')
+    
+    return ''
 
-def grade_documents(state: AgentState):
-    '''Retrieve된 Document 중 관련 있는 Document만 필터링하는 노드'''
-    logger.info('======== [NODE] GRADE DOCUMENTS ========')
-    question = state['question']
-    documents = state['documents']
-    filtered_docs = []
+def third_judgement(state: ManagingState):
+    '''생성된 답변을 판단하는 세번째 노드'''
+    logger.info('======== [NODE] THIRD_JUDGEMENT ========')
+    
+    return ''
 
-    for doc in documents[:5]:
-        decision = grade_documents_chain().invoke({"question": question, "document": doc}).pass_yn
+def fourth_judgement(state: ManagingState):
+    '''생성된 답변을 판단하는 네번째 노드'''
+    logger.info('======== [NODE] FOURTH_JUDGEMENT ========')
+    
+    return ''
 
-        if decision == "Y":
-            logger.info('======== [NODE:CHECK] RELEVANT DOCUMENT ========')
-            logger.info(doc)
-            filtered_docs.append(doc)
-        else:
-            logger.info('======== [NODE:CHECK] IRRELEVANT DOCUMENT ========')
-            logger.info(doc)
-
-    return {"documents": filtered_docs}
+def manager(state: ManagingState):
+    '''답변을 취합하는 노드'''
+    logger.info('======== [NODE] MANAGER ========')
+    
+    return ''

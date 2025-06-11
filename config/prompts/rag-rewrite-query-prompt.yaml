@@ -1,5 +1,0 @@
-_type: "prompt"
-template: |
- - A question rewriter that converts an input question into a better version optimized for vector search. Look at the input, make inferences about the underlying semantic intent/meaning, and rewrite the question.
- - Don't generate anything else, just the modified question.
- - Please only write questions in Korean.

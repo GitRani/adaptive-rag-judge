@@ -1,15 +1,21 @@
-from typing import TypedDict, Annotated, List
+from typing import TypedDict, Annotated, List, Optional, Dict, Any
+from langchain.schema import HumanMessage, AIMessage, BaseMessage
+
 from langgraph.graph.message import add_messages
 
-from schemas.fastapi_schema import HumanInfo
+class ManagingState(TypedDict):
+    question: str
+    chat_history: Annotated[List[BaseMessage], add_messages]
+    retrieved_docs: Optional[List[str]]
+    rewritten_question: Optional[str]
+    rewrite_count: int
+    answer: Optional[str]
+    evaluation_results: Optional[Dict[str, str]]
+    final_decision: Optional[str]
+    logs: Optional[List[Dict[str, Any]]]
+    error: Optional[Dict[str, str]]
+    metadata: Optional[Dict[str, Any]]
+    summary: Optional[str]
 
-class AgentState(TypedDict):
-    question: Annotated[str, "question"]
-    generate_message: Annotated[str, "llm generated answer"]
-    documents: Annotated[List[str], "context"]
-    # messages 값 추가 (아직 미구현)
-    messages: Annotated[List, add_messages]
-    # 무한루프 방지용 상태값 설정 (아직 미구현)
-    limit: int
-    human_info: HumanInfo
+
     

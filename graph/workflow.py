@@ -1,9 +1,8 @@
 # nodes와 edges를 기반으로 workflow 정의
 # memorysaver를 db 관리화 한다면 기능 이전 필요
 from langgraph.graph import StateGraph, START, END
-from langgraph.checkpoint.memory import MemorySaver
 
-from schemas.state_schema import AgentState
+from schemas.state_schema import ManagingState
 
 from graph.edges import (
     route_vector_or_websearch, 
@@ -12,62 +11,79 @@ from graph.edges import (
 )
 
 from graph.nodes import (
-    web_search,
-    generate,
-    transform_query,
+    initialize_query,
     retrieve,
-    grade_documents
+    grade_documents,
+    rewrite_query,
+    generate,
+    first_judgement,
+    second_judgement,
+    third_judgement,
+    fourth_judgement,
+    manager
+
 )
 import logging
 
 logger = logging.getLogger(__name__)
 
-# 나중에 memorysaver postgre 용 추가 예정
-def build_workflow(checkpointer):
-    workflow = StateGraph(AgentState)
+def build_workflow():
+    # retrieval subgraph
+    retrieval_graph = StateGraph(ManagingState)
+    retrieval_graph.add_node("retrieve", retrieve)
+    retrieval_graph.add_node("grade_documents", grade_documents)
+    retrieval_graph.add_node("rewrite_query", rewrite_query)
 
-    workflow.add_node("web_search", web_search)
-    workflow.add_node("generate", generate)
-    workflow.add_node("transform_query", transform_query)
-    workflow.add_node("retrieve", retrieve)
-    workflow.add_node("grade_documents", grade_documents)
+    retrieval_graph.add_edge(START, "retrieve")
+    retrieval_graph.add_edge("retrieve", "grade_documents")
+    retrieval_graph.add_edge("rewrite_query", "retrieve")
 
-    workflow.add_edge("web_search", "generate")
-    workflow.add_edge("transform_query", "retrieve")
-    workflow.add_edge("retrieve", "grade_documents")
-
-    workflow.add_conditional_edges(
-        START,
-        route_vector_or_websearch,
-        {
-        "search": "web_search",
-        "vector": "retrieve",
-        "generate": "generate"
-        }
-    )
-    workflow.add_conditional_edges(
-        "generate",
-        route_hallucination_check,
-        {
-        "hallucination": "generate",
-        "relevant": END,
-        "irrelevant": "transform_query"
-        }
-    )
-    workflow.add_conditional_edges(
+    retrieval_graph.add_conditional_edges(
         "grade_documents",
         route_generate_by_relevance,
-        {
-        "relevant": "generate",
-        "irrelevant": "transform_query"
-        }
+        {"relevant": END, "irrelevant": "rewrite_query"}
     )
 
-    # return workflow.compile(checkpointer=memory)
-    if checkpointer == '':
-        return workflow.compile()
-    else:
-        return workflow.compile(checkpointer=checkpointer)
+    # judgment subgraph
+    judgment_graph = StateGraph(ManagingState)
+    judgment_graph.add_node("generate", generate)
+    judgment_graph.add_node("first_judgement", first_judgement)
+    judgment_graph.add_node("second_judgement", second_judgement)
+    judgment_graph.add_node("third_judgement", third_judgement)
+    judgment_graph.add_node("fourth_judgement", fourth_judgement)
+    judgment_graph.add_node("manager", manager)
+
+    judgment_graph.add_edge(START, "generate") 
+    judgment_graph.add_edge("generate", "first_judgement")
+    judgment_graph.add_edge("generate", "second_judgement")
+    judgment_graph.add_edge("generate", "third_judgement")
+    judgment_graph.add_edge("generate", "fourth_judgement")
+    judgment_graph.add_edge("first_judgement", "manager")
+    judgment_graph.add_edge("second_judgement", "manager")
+    judgment_graph.add_edge("third_judgement", "manager")
+    judgment_graph.add_edge("fourth_judgement", "manager")
+    judgment_graph.add_edge("manager", END)
+
+    # main graph
+    main_workflow = StateGraph(ManagingState)
+    main_workflow.add_node("initialize_query", initialize_query)  # 초기화 노드 추가
+    main_workflow.add_node("retrieval", retrieval_graph.compile())
+
+    main_workflow.add_node("judgment", judgment_graph.compile())
+
+    # 메인 그래프 엣지
+    main_workflow.add_edge(START, "initialize_query")
+    main_workflow.add_conditional_edges(
+        "initialize_query",
+        route_vector_or_generate,
+        {"vector": "retrieval", "generate": "judgment"}
+    )
+    main_workflow.add_edge("retrieval", "judgment")
+    main_workflow.add_edge("judgment", END)
+
+
+
+
 
 
 
